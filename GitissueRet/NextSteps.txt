@@ -1,0 +1,42 @@
+This will be the next steps required, not done yet.
+
+from langchain.chat_models import ollama...
+from github_issues_retriever_tool import GithubIssuesRetrieverTool, from_config
+
+# 1 Instantiate your tool
+tool = from_config("config.yaml")
+
+# 2 Fetch, summarize, chunk, extract links
+resp = tool._run(
+    repo_name="octocat/Hello-World",
+    state="all",
+    issue_number=None,
+    chunk_size=800,
+    chunk_overlap=50,
+)
+
+# 3 Turn all summaries + link docs + chunks into LangChain Documents
+from langchain.schema import Document
+docs = []
+for rec in resp.issues:
+    # summary as one doc
+    docs.append(Document(page_content=rec.summary, metadata={"issue": rec.issue_number, "type": "summary"}))
+    # link docs
+    for ld in rec.links:
+        docs.append(Document(page_content=ld.content, metadata={"source": ld.url}))
+    # chunk docs
+    for c in rec.chunks:
+        docs.append(Document(page_content=c.text, metadata={"issue": c.issue_number, "chunk": c.chunk_index}))
+
+# 4 Embed & store in Chroma (for example)
+from langchain.vectorstores import Chroma
+from langchain.embeddings import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings()
+vectordb   = Chroma.from_documents(docs, embeddings)
+
+# 5 Build a retriever for downstream analysis
+retriever = vectordb.as_retriever(search_kwargs={"k":5})
+
+# 6 Now your agent can call `retriever.get_relevant_documents(query)`
+#    to pull back context for further chains/analysis.
